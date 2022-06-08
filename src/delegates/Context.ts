@@ -66,6 +66,28 @@ export class Context extends DelegateBase {
         .catch(err => callback(err, null));
   }
 
+  public getDepotIds =
+    (args: any, callback: (err, res: string[]) => void) => {
+      log('debug', 'getDepotIds called');
+      const appId = (this.gameInfo?.details !== undefined)
+        ? Object.keys(this.gameInfo.details).find(key => key.toLowerCase() === 'steamappid')
+        : undefined;
+      if (!appId || this.gameInfo.details?.[appId] === undefined) {
+        callback(new util.DataInvalid('Could not find app id'), null);
+      } else {
+        util.GameStoreHelper.findByAppId([this.gameInfo.details[appId].toString()], 'steam')
+          .then(gameEntry => {
+            const installedDepots = gameEntry?.['manifestData']?.['AppState']?.['InstalledDepots'];
+            if (installedDepots !== undefined) {
+              callback(null, Object.keys(installedDepots))
+            } else {
+              callback(new util.DataInvalid('Could not find app id'), null);
+            }
+          })
+          .catch(err => callback(new util.DataInvalid('Could not find gameEntry'), null));
+      }
+  }
+
   public getGameExecutable =
     (args: any, callback: (err, res: string) => void) => {
       log('debug', 'getGameExecutable called');
