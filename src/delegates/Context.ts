@@ -47,7 +47,9 @@ export class Context extends DelegateBase {
      log('debug', 'getGameFileList called');
      const fullPath = this.gameDiscovery.path;
      const modPath = this.gameInfo.queryModPath(this.gameDiscovery.path);
-     const filterFunc = (input: IEntry) => input.filePath.indexOf(modPath) === -1;
+     const filterFunc = (input: IEntry) => ((modPath !== '.') && (modPath !== fullPath))
+      ? input.filePath.indexOf(modPath) === -1
+      : true;
      this.readDir(fullPath, true, filterFunc)
        .then((fileList) => callback(null, fileList))
        .catch(err => callback(err, null));

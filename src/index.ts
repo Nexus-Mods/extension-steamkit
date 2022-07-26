@@ -368,6 +368,7 @@ class ConnectionIPC {
   public isActive(): boolean {
     // kill accepts numeric signal codes and returns a boolean to signal success
     // For some reason the type declaration is incomplete
+    //return (this.mProcess !== null)
     return (this.mProcess !== null) ||  (this.mProcess?.kill as any)?.(0);
   }
 
@@ -608,7 +609,7 @@ function init(context: types.IExtensionContext): boolean {
       : Promise.reject(new Error('Not a Steam game'));
   };
 
-  const verifyFilesWrap = async (parameters: ISteamKitParameters, gameId: string) => {
+  const verifyFilesWrap = async (parameters: ISteamKitParameters, gameId: string, cb?: (err: Error, res?: any) => void) => {
     _mismatches = [];
     const state = context.api.getState();
     const discovery = selectors.discoveryByGame(state, gameId);
@@ -616,6 +617,7 @@ function init(context: types.IExtensionContext): boolean {
       await verifyIsSteamGame(parameters, discovery);
     } catch (err) {
       raiseNotASteamGameNotif(context.api);
+      cb?.(err);
       return;
     }
 
@@ -623,6 +625,7 @@ function init(context: types.IExtensionContext): boolean {
       await purge(context.api);
     } catch (err) {
       context.api.showErrorNotification('Failed to purge mods', err);
+      cb?.(err);
       return;
     }
     const coreDelegates = new Core(context.api, gameId);
@@ -648,10 +651,12 @@ function init(context: types.IExtensionContext): boolean {
         message: 'Connecting to Steam servers',
       });
       await VerifyFiles(parameters, progress, coreDelegates);
+      cb?.(null);
       return Promise.resolve();
     } catch (err) {
       hadError = true;
       context.api.showErrorNotification('File integrity checks failed', err);
+      cb?.(err);
       return Promise.resolve();
     } finally {
       context.api.dismissNotification('steamkit_verifying_files');
@@ -843,14 +848,17 @@ function init(context: types.IExtensionContext): boolean {
     const state = context.api.store.getState();
     const gameMode = selectors.activeGameId(state);
     const game = util.getGame(gameMode);
-    return ((game?.details?.hideSteamKit !== true)
-         && (game?.details?.steamAppId || game?.environment?.steamAppId)) !== undefined;
+    if (game?.details?.hideSteamKit === true) {
+      return false;
+    }
+
+    return (!!game?.details?.steamAppId || !!game?.environment?.SteamAppId)
   });
 
   context.registerAPI('steamkitVerifyFileIntegrity', (parameters: ISteamKitParameters,
                                                       gameId: string,
                                                       callback: (err, result) => void) => {
-    verifyFilesWrap(parameters, gameId);
+    verifyFilesWrap(parameters, gameId, callback);
   }, { minArguments: 2 });
 
   // context.registerSettings('Interface', Settings, () => ({
