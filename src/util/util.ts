@@ -1,15 +1,19 @@
 import path from 'path';
-import { actions, types, selectors, util } from 'vortex-api';
-import { IWorkshopMod } from '../types/interface';
+import { actions, types, selectors, util, fs } from 'vortex-api';
+import { IDependencyModInfo, IWorkshopMod } from '../types/interface';
 
 import turbowalk from 'turbowalk';
+import { memoize } from 'lodash';
 
 export function addDownloadMetaData(api: types.IExtensionApi,
-                                    mod: IWorkshopMod,
+                                    mod: IWorkshopMod | IDependencyModInfo,
                                     dlId: string,
                                     gameId: string) {
+  if (mod['title'] === undefined) {
+    return;
+  }
   const batchedActions = [
-    actions.setDownloadModInfo(dlId, 'name', mod.title),
+    actions.setDownloadModInfo(dlId, 'name', mod['title']),
     actions.setDownloadModInfo(dlId, 'source', 'website'),
     actions.setDownloadModInfo(dlId, 'url', `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`),
     actions.setDownloadModInfo(dlId, 'game', gameId),
@@ -70,5 +74,31 @@ export async function packFiles(modPath: string, files: string[], destination: s
     await szip.add(destination, arcMap[modKey]
       .map(file => path.join(file.basePath,
         file.relPath.split(path.sep)[0])), { raw: ['-r'] });
+  }
+}
+
+export function steamWebAPIKeyPath() {
+  return path.join(util.getVortexPath('temp'), 'steamWebAPIKey.json');
+}
+
+export async function ensureWebAPIFile(api: types.IExtensionApi, key: string) {
+  // TODO: I would use the state to store this but for some stupid reason it doesn't
+  //  persist between restarts (both settings and presistent branches).
+  //  That's something I'll investigate some other time.
+  try {
+    await fs.writeFileAsync(steamWebAPIKeyPath(), JSON.stringify({ key }));
+  } catch (err) {
+    api.showErrorNotification('Failed to write Steam Web API key', err);
+    return Promise.resolve();
+  }
+}
+
+export const getApiKey = memoize(readWebApiKey);
+async function readWebApiKey() {
+  try {
+    const key = await fs.readFileAsync(steamWebAPIKeyPath());
+    return JSON.parse(key).key;
+  } catch (err) {
+    return Promise.resolve('');
   }
 }

@@ -1,7 +1,7 @@
 import { actions, fs, log, selectors, types, util } from 'vortex-api';
 
 import Core from './delegates/Core';
-import { IMismatch, ISteamKitParameters, IWorkshopMod, OperationType } from './types/interface';
+import { IDependencyModInfo, IMismatch, ISteamKitParameters, IWorkshopMod, OperationType } from './types/interface';
 
 import { ChildProcess } from 'child_process';
 import { createIPC } from './createIPC';
@@ -13,18 +13,14 @@ import { generate as shortid } from 'shortid';
 import Settings from './views/Settings';
 import WorkshopPage from './views/WorkshopPage';
 
-import { findMod, getCachingPath, getPage, hasPage, resetCache } from './cache';
 import { ModScrubber } from './util/Scrubber';
 
 import MismatchDialog from './views/MismatchDialog';
 
-import { addDownloadMetaData, addModMetaData, getFiles, packFiles } from './util/util';
+import { addDownloadMetaData, addModMetaData, ensureWebAPIFile, getApiKey, getFiles, packFiles } from './util/util';
 
-import { endMismatchDialog, setCacheCounter, setMismatchState } from './actions/session';
+import { endMismatchDialog, setCacheCounter } from './actions/session';
 import { sessionReducer } from './reducers/session';
-
-import { setWebApiKey } from './actions/settings';
-import { settingsReducer } from './reducers/settings';
 
 import { STEAM_WEB_API_URL } from './constants';
 
@@ -368,7 +364,7 @@ class ConnectionIPC {
   public isActive(): boolean {
     // kill accepts numeric signal codes and returns a boolean to signal success
     // For some reason the type declaration is incomplete
-    //return (this.mProcess !== null)
+    //return (this.mProcess !== null);
     return (this.mProcess !== null) ||  (this.mProcess?.kill as any)?.(0);
   }
 
@@ -533,10 +529,6 @@ return connection.sendMessage('DownloadMod', { ...parameters, progressDelegate }
   .catch(err => Promise.reject(transformError(err)));
 }
 
-async function onGameModeActivated(api: types.IExtensionApi, gameMode: string) {
-  resetCache();
-}
-
 const normalizePath = (filePath: string) => {
   return path.normalize(filePath.toLowerCase())
     .replace(/[(\/)(\\)]/g, '/')
@@ -591,7 +583,6 @@ function raiseNotASteamGameNotif(api: types.IExtensionApi) {
 
 function init(context: types.IExtensionContext): boolean {
   context.registerReducer(['session', 'steamkit'], sessionReducer);
-  context.registerReducer(['settings', 'steamkit'], settingsReducer);
   let downloadQueue;
   let modScrubber: ModScrubber;
   let _mismatches: IMismatch[] = [];
@@ -718,114 +709,116 @@ function init(context: types.IExtensionContext): boolean {
       coreDelegates.detach();
     }
   };
-  // context.registerMainPage('steam', 'Steam Workshop', WorkshopPage, {
-  //   hotkeyRaw: 'F1',
-  //   group: 'global',
-  //   visible: () => {
-  //     const state = context.api.getState();
-  //     const gameMode = selectors.activeGameId(state);
-  //     if (!gameMode) {
-  //       return false;
-  //     }
-  //     const game = util.getGame(gameMode);
-  //     return (game?.details?.steamAppId !== undefined);
-  //   },
-  //   props: () => ({
-  //     t: context.api.translate,
-  //     onRefreshWorkshopMods: async (gameId: string, page: number) => {
-  //       try {
-  //         const modList = await getPage(context.api, gameId, page);
-  //         const state = context.api.getState();
-  //         const game = selectors.gameById(state, gameId);
-  //         const discovery = selectors.discoveryByGame(state, gameId);
-  //         await verifyIsSteamGame({ AppId: game?.details?.steamAppId }, discovery);
-  //         let webApiKey = util.getSafe(state, ['settings', 'steamkit', 'WebAPIKey'], undefined);
-  //         if (webApiKey === undefined) {
-  //           const t = context.api.translate;
-  //           await showSteamWebApiDialog(context.api)
-  //             .then(result => {
-  //               if (result.action === 'Confirm' && !!result.input['apikey']) {
-  //                 webApiKey = result.input['apikey'];
-  //                 context.api.store.dispatch(setWebApiKey(result.input['apikey']));
-  //               } else {
-  //                 context.api.sendNotification({
-  //                   message: 'Unable to query Steam web API servers',
-  //                   type: 'warning',
-  //                   displayMS: 3000,
-  //                 });
-  //                 return Promise.resolve([]);
-  //               }
-  //             });
-  //         }
-  //         modScrubber.init(game.details.steamAppId,
-  //           getCachingPath(context.api, gameId), gameId, webApiKey);
-  //         return Promise.resolve(modList);
-  //       } catch (err) {
-  //         if (err.message === 'Not a Steam game') {
-  //           raiseNotASteamGameNotif(context.api);
-  //         } else {
-  //           context.api.showErrorNotification('Unable to refresh workshop list', err);
-  //         }
-  //         return Promise.resolve([]);
-  //       }
-  //     },
-  //     onGetPage: async (page: number) => {
-  //       if (page <= 0) {
-  //         return Promise.resolve(false);
-  //       }
-  //       const state = context.api.getState();
-  //       const gameMode = selectors.activeGameId(state);
-  //       return hasPage(context.api, gameMode, page);
-  //     },
-  //     onModClick: async (mod: IWorkshopMod) => {
-  //       const state = context.api.getState();
-  //       const gameMode = selectors.activeGameId(state);
-  //       const tempPath = util.getVortexPath('temp');
-  //       const addToQueue = (queued: IWorkshopMod) => {
-  //         downloadQueue(async () => {
-  //           const modPath = path.join(tempPath,
-  //             gameMode, queued.title.replace(/[^a-zA-Z0-9.]/gm, ''));
-  //           await fs.ensureDirWritableAsync(modPath);
-  //           const params: ISteamKitParameters = {
-  //             AppId: queued.creator_appid,
-  //             InstallDirectory: modPath,
-  //             PubFile: queued.publishedfileid,
-  //           };
-  //           try {
-  //             await downloadWorkshopMod(params, gameMode);
-  //           } catch (err) {
-  //             return Promise.resolve();
-  //           }
-  //           const files = await getFiles(modPath);
-  //           await packFiles(modPath, files, `${modPath}.7z`);
-  //           await new Promise<void>((resolve) =>
-  //             context.api.events.emit('import-downloads', [ `${modPath}.7z` ],
-  //             async (dlIds: string[]) => {
-  //               if (dlIds.length === 0) {
-  //                 context.api.showErrorNotification('Failed to import archive', `${modPath}.zip`);
-  //                 return resolve();
-  //               }
+  context.registerMainPage('steam', 'Steam Workshop', WorkshopPage, {
+    hotkeyRaw: 'F1',
+    group: 'global',
+    visible: () => {
+      const state = context.api.getState();
+      const gameMode = selectors.activeGameId(state);
+      if (!gameMode) {
+        return false;
+      }
+      const game = util.getGame(gameMode);
+      return (game?.details?.steamAppId !== undefined);
+    },
+    props: () => ({
+      t: context.api.translate,
+      onGameModeActivated: async (gameId: string): Promise<ModScrubber> => {
+        try {
+          const state = context.api.getState();
+          const game = selectors.gameById(state, gameId);
+          const discovery = selectors.discoveryByGame(state, gameId);
+          await verifyIsSteamGame({ AppId: game?.details?.steamAppId }, discovery);
+          let webApiKey = await getApiKey();
+          if (!webApiKey) {
+            await showSteamWebApiDialog(context.api)
+              .then(async result => {
+                if (result.action === 'Confirm' && !!result.input['apikey']) {
+                  webApiKey = result.input['apikey'];
+                  await ensureWebAPIFile(context.api, result.input['apikey']);
+                } else {
+                  context.api.sendNotification({
+                    message: 'Unable to query Steam web API servers',
+                    type: 'warning',
+                    displayMS: 3000,
+                  });
+                  return Promise.resolve(undefined);
+                }
+              });
+          }
+          modScrubber.init(game.details.steamAppId, gameId, webApiKey);
+          return modScrubber;
+        } catch (err) {
+          if (err.message === 'Not a Steam game') {
+            raiseNotASteamGameNotif(context.api);
+          } else {
+            context.api.showErrorNotification('Unable to refresh workshop list', err);
+          }
+          return Promise.resolve(undefined);
+        }
+      },
+      onModClick: async (mod: IWorkshopMod) => {
+        const state = context.api.getState();
+        const gameMode = selectors.activeGameId(state);
+        const tempPath = util.getVortexPath('temp');
+        const addToQueue = (queued: IWorkshopMod | IDependencyModInfo) => {
+          downloadQueue(async () => {
+            const modPath = queued['title'] !== undefined
+              ? path.join(tempPath, gameMode, queued['title'].replace(/[^a-zA-Z0-9.]/gm, ''))
+              : path.join(tempPath, gameMode, queued.publishedfileid);
+            await fs.ensureDirWritableAsync(modPath);
+            const params: ISteamKitParameters = {
+              AppId: queued.creator_appid,
+              InstallDirectory: modPath,
+              PubFile: queued.publishedfileid,
+            };
+            try {
+              await downloadWorkshopMod(params, gameMode);
+            } catch (err) {
+              return Promise.resolve();
+            }
+            const files = await getFiles(modPath);
+            await packFiles(modPath, files, `${modPath}.7z`);
+            await new Promise<void>((resolve) =>
+              context.api.events.emit('import-downloads', [ `${modPath}.7z` ],
+              async (dlIds: string[]) => {
+                if (dlIds.length === 0) {
+                  context.api.showErrorNotification('Failed to import archive', `${modPath}.zip`);
+                  return resolve();
+                }
 
-  //               for (const dlId of dlIds) {
-  //                 addDownloadMetaData(context.api, queued, dlId, gameMode);
-  //               }
-
-  //               return resolve();
-  //           }));
-  //         });
-  //       };
-  //       if (mod.num_children > 0) {
-  //         for (const child of mod['children']) {
-  //           const childMod = await findMod(context.api, gameMode, child.publishedfileid);
-  //           if (childMod !== undefined) {
-  //             addToQueue(childMod);
-  //           }
-  //         }
-  //       }
-  //       addToQueue(mod);
-  //     },
-  //   }),
-  // } as any);
+                for (const dlId of dlIds) {
+                  addDownloadMetaData(context.api, queued, dlId, gameMode);
+                }
+                return resolve();
+            }));
+          });
+        };
+        // const dependencies: IWorkshopMod[] = [];
+        // for (const child of mod['children']) {
+        //   dependencies.push(child);
+        // }
+        // const t = context.api.translate;
+        // const download = (mod.num_children === 0)
+        //   ? { action: 'Download', input: undefined }
+        //   : await context.api.showDialog('question', 'Download Mod Dependencies?', {
+        //   bbcode: 'The mod "{{modName}}" has {{numChildren}} dependencies, would you like to download them alongside this mod?[br][/br][br][/br]'
+        //         + 'Please note: any mods installed as dependencies will probably not have any metadata - this is unfortunately down to the Steam Web API '
+        //         + 'only providing the numerical id of dependencies, and no clear way to query for the metadata using said id.',
+        //   parameters: { modName: mod.title, numChildren: mod.num_children },
+        // }, [
+        //   { label: 'No' },
+        //   { label: 'Yes', default: true },
+        // ]);
+        // if (download.action === 'Yes') {
+        //   for (const dep of dependencies) {
+        //     addToQueue({ publishedfileid: dep.publishedfileid, creator_appid: mod.creator_appid });
+        //   }
+        // }
+        addToQueue(mod);
+      },
+    }),
+  } as any);
 
   context.registerAction('mod-icons', 300, 'steam', {}, 'Verify Files', () => {
     const state = context.api.getState();
@@ -861,15 +854,21 @@ function init(context: types.IExtensionContext): boolean {
     verifyFilesWrap(parameters, gameId, callback);
   }, { minArguments: 2 });
 
-  // context.registerSettings('Interface', Settings, () => ({
-  //   t: context.api.translate,
-  //   onSetSteamWebAPIKey: () => showSteamWebApiDialog(context.api)
-  //     .then(result => {
-  //       if (result.action === 'Confirm' && !!result.input['apikey']) {
-  //         context.api.store.dispatch(setWebApiKey(result.input['apikey']));
-  //       }
-  //     }),
-  // }), () => true, 51);
+  context.registerSettings('Interface', Settings, () => ({
+    t: context.api.translate,
+    getSteamWebApiKey: async () => {
+      return await getApiKey();
+    },
+    onSetSteamWebAPIKey: (reset?: boolean) => {
+      return !reset ? showSteamWebApiDialog(context.api)
+        .then(async result => {
+          if (result.action === 'Confirm' && !!result.input['apikey']) {
+            return ensureWebAPIFile(context.api, result.input['apikey']);
+          }
+        })
+      : ensureWebAPIFile(context.api, '');
+    }
+  }), () => true, 51);
 
   context.registerDialog('mismatched-files-dialog', MismatchDialog, () => ({
     onSelect: (mismatches: IMismatch[]) => {
@@ -932,13 +931,10 @@ function init(context: types.IExtensionContext): boolean {
       }
     });
 
-    context.api.events.on('gamemode-activated',
-      async (gameMode: string) => onGameModeActivated(context.api, gameMode));
-
     context.api.events.on('did-install-mod', (gameId, archiveId, modId) => {
       const state = context.api.getState();
       const download: types.IDownload = state.persistent.downloads?.files?.[archiveId];
-      const steamkitMod = download.modInfo?.steamkit !== undefined
+      const steamkitMod = download?.modInfo?.steamkit !== undefined
         ? JSON.parse(download.modInfo?.steamkit) as IWorkshopMod
         : undefined;
       if (steamkitMod) {

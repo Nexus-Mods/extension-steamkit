@@ -1,6 +1,6 @@
 import { types, util } from 'vortex-api';
 
-import { endMismatchDialog, setCacheCounter, setMismatchState } from '../actions/session';
+import { endMismatchDialog, setCacheCounter, setMismatchState, setWorkshopModFilter } from '../actions/session';
 
 export const sessionReducer: types.IReducerSpec = {
   reducers: {
@@ -14,9 +14,10 @@ export const sessionReducer: types.IReducerSpec = {
       const { mismatches } = payload;
       return util.setSafe(state, ['mismatches'], mismatches);
     },
+    [setWorkshopModFilter as any]: (state, payload) => {
+      const { filter } = payload;
+      return util.setSafe(state, ['workshopModFilter'], filter);
+    }
   },
-  defaults: {
-    cache: {},
-    mismatches: [],
-  },
+  defaults: {},
 };

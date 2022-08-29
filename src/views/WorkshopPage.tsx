@@ -1,221 +1,226 @@
+/* eslint-disable max-lines-per-function */
 import path from 'path';
 
-import { ComponentEx, EmptyPlaceholder, FlexLayout, FormInput, Icon,
-  IconBar, MainPage, selectors, tooltip, types, util } from 'vortex-api';
+import { EmptyPlaceholder, FlexLayout, FormInput, MainContext,
+  IconBar, MainPage, selectors, Spinner, types, util } from 'vortex-api';
 
-import { connect } from 'react-redux';
+import { useSelector } from 'react-redux';
 
-import { TFunction } from 'i18next';
-
-import Promise from 'bluebird';
 import * as React from 'react';
-import { FormControl, InputGroup, ListGroup,
-         Panel, PanelGroup, ProgressBar } from 'react-bootstrap';
+import { InputGroup, Panel, PanelGroup } from 'react-bootstrap';
 import { IWorkshopMod } from '../types/interface';
 import ModThumbnail from './ModThumbnail';
+import { useTranslation } from 'react-i18next';
+import { TFunction } from 'i18next';
+
+import { setWorkshopModFilter } from '../actions/session';
+import { ModScrubber } from '../util/Scrubber';
+import { MODS_PER_PAGE } from '../constants';
 
 interface IBaseProps {
-  t: TFunction;
-  onRefreshWorkshopMods: (gameId: string, page: number) => Promise<IWorkshopMod[]>;
+  api: types.IExtensionApi;
+  onGameModeActivated: (gameId: string) => Promise<ModScrubber>;
   onModClick: (mod: IWorkshopMod) => void;
-  onGetPage: (page: number) => Promise<number>;
 }
 
 interface IConnectedProps {
-  profiles: { [profileId: string]: types.IProfile };
   gameMode: string;
   totalMods: number;
   fallbackImg: string;
 }
 
-type IProps = IBaseProps & IConnectedProps;
-
-interface IComponentState {
-  currentFilterValue: string;
-  availableMods: IWorkshopMod[];
-  currentPage: number;
+interface IActionProps {
+  onSetWorkshopModFilter: (filter: string) => void;
 }
 
-function nop() {
-  // nop
-}
+const initialState = {
 
-class WorkshopPage extends ComponentEx<IProps, IComponentState> {
-  public declare context: types.IComponentContext;
+};
 
-  private buttons: types.IActionDefinition[];
-  private mRef: HTMLElement;
+export default function WorkshopPage(props: IBaseProps) {
+  const { onGameModeActivated, onModClick } = props;
+  const [ t ] = useTranslation();
+  const [ availableMods, setAvailableMods ] = React.useState([]);
+  const [ page, setPage ] = React.useState(1);
+  const [ modScrubber, setModScrubber ] = React.useState<ModScrubber | undefined>(undefined);
+  const [ counter, setCounter ] = React.useState(0);
+  const [ currentFilterValue, setCurrentFilterValue ] = React.useState('');
+  const { gameMode, fallbackImg } = useSelector(mapStateToProps);
+  const context = React.useContext(MainContext);
+  const { onSetWorkshopModFilter } = mapDispatchToProps(context.api.store.dispatch);
+  const onSetPage = React.useCallback((newPage: number) => {
+    if (newPage !== page && newPage > 0 && newPage <= Math.ceil(modScrubber.availableTotal() / MODS_PER_PAGE)) {
+      setAvailableMods([]);
+      setPage(newPage);
+    }
+  }, [page, setPage, setAvailableMods, modScrubber]);
 
-  constructor(props: IProps) {
-    super(props);
+  const onSetCounter = React.useCallback((newCounter: number) => {
+    if (newCounter !== counter) {
+      setAvailableMods([]);
+      setCounter(newCounter);
+    }
+  }, [counter, setCounter, setAvailableMods]);
 
-    this.initState({
-      availableMods: [],
-      currentFilterValue: '',
-      currentPage: 1,
-    });
-
-    this.buttons = [
-      { action: () => this.prevPage(), title: 'Previous Page' },
-      { action: () => this.nextPage(), title: 'Next Page' },
-      { action: () => this.props.onRefreshWorkshopMods(this.props.gameMode, 1), title: 'Refresh Mods' },
+  const buttons = React.useMemo(() => {
+    return [
+      { action: () => onSetPage(page - 1), title: 'Previous Page' },
+      { action: () => onSetPage(page + 1), title: 'Next Page' },
     ];
-  }
+  }, [page, onSetPage]);
 
-  public componentDidMount(): void {
-    this.updateMods(this.state.currentPage);
-  }
+  const applyFilter = React.useCallback((value) => {
+    setCurrentFilterValue(value);
+    onSetWorkshopModFilter(value);
+    modScrubber.resetDataArray();
+    onSetCounter(counter + 1);
+    onSetPage(1);
+  }, [
+    onSetPage, onSetCounter, setCurrentFilterValue,
+    onSetWorkshopModFilter, modScrubber, counter,
+  ]);
 
-  public shouldComponentUpdate(nextProps: IProps, nextState: IComponentState): boolean {
-    if ((this.props.totalMods !== nextProps.totalMods)
-      || this.state.currentPage !== nextState.currentPage) {
-        return true;
-    }
-    return false;
-  }
-
-  public componentDidUpdate(prevProps: IProps, prevState: IComponentState, snapshot?: any): void {
-    if (this.props.totalMods !== prevProps.totalMods) {
-      this.updateMods(this.state.currentPage);
-    }
-  }
-
-  public render(): JSX.Element {
-    const { t, profiles } = this.props;
-    const { currentFilterValue, availableMods } = this.state;
-
-    return (
-      <MainPage domRef={this.setRef}>
-        <MainPage.Header>
-          <IconBar
-            group='workshop-icons'
-            staticElements={this.buttons}
-            className='menubar'
-            t={t}
-          />
-        </MainPage.Header>
-        <MainPage.Body>
-          <FlexLayout type='column' className='mod-page'>
-            <FlexLayout.Fixed>
-              <InputGroup>
-                <FormInput
-                  className='mod-filter-input'
-                  value={currentFilterValue}
-                  placeholder={t('Search for a mod...')}
-                  onChange={this.onFilterInputChange}
-                  debounceTimer={100}
-                  clearable
-                />
-              </InputGroup>
-            </FlexLayout.Fixed>
-            <FlexLayout.Flex>
-              <div className='modpicker-body'>
-                <PanelGroup id='mod-panel-group'>
-                    <Panel.Body>
-                      {this.renderMods(availableMods)}
-                    </Panel.Body>
-                </PanelGroup>
-              </div>
-            </FlexLayout.Flex>
-          </FlexLayout>
-        </MainPage.Body>
-      </MainPage>
-    );
-  }
-
-  private nextPage = async () => {
-    const wantedPage = this.state.currentPage + 1;
-    const hasPage = await this.props.onGetPage(wantedPage);
-    if (hasPage) {
-      this.nextState.currentPage = wantedPage;
-      this.updateMods(wantedPage);
-    }
-  }
-
-  private prevPage = async () => {
-    const wantedPage = this.state.currentPage - 1;
-    const hasPage = await this.props.onGetPage(wantedPage);
-    if (hasPage) {
-      this.nextState.currentPage = wantedPage;
-      this.updateMods(wantedPage);
-    }
-  }
-
-  private updateMods = async (page: number) => {
-    const mods: IWorkshopMod[] = await this.props.onRefreshWorkshopMods(this.props.gameMode, page);
-    this.nextState.availableMods = mods;
-  }
-
-  private onFilterInputChange = (input) => {
-    this.nextState.currentFilterValue = input;
-  }
-
-  private applyModFilter = (mod: IWorkshopMod): boolean => {
-    const { currentFilterValue } = this.state;
-    return mod.title.toLowerCase().includes(currentFilterValue.toLowerCase())
-        || !currentFilterValue;
-  }
-
-  private setRef = ref => {
-    this.mRef = ref;
-  }
-
-  private renderMods = (mods: IWorkshopMod[]): JSX.Element => {
-    const { t, gameMode } = this.props;
-    const { currentFilterValue } = this.state;
-
-    if (mods?.length === 0) {
-      if (!!(currentFilterValue)) {
-        return null;
-      } else {
-        return (
-          <EmptyPlaceholder
-            icon='game'
-            text={t('There are no mods to choose from')}
-            subtext={t('Click the refresh button')}
-          />
-        );
+  React.useEffect(() => {
+    const fetchModScrubber = async () => {
+      if (gameMode) {
+        let scrubber: React.SetStateAction<ModScrubber>;
+        try {
+          scrubber = await onGameModeActivated(gameMode);
+          setModScrubber(scrubber);
+          onSetCounter(counter + 1);
+        } catch (err) {
+          context.api.showErrorNotification('Failed to load mod scrubber', err);
+        }
       }
     }
-    return this.renderModsSmall(mods, gameMode);
-  }
+    fetchModScrubber();
+  } ,[gameMode]);
+  React.useEffect(() => {
+    if (!modScrubber) {
+      return;
+    }
+    const updatePage = async () => {
+      const mods = await modScrubber.scrubPage({
+        page,
+        filter: currentFilterValue
+      });
+      if (mods?.length > 0) {
+        setAvailableMods(mods);
+        setPage(page);
+      }
+    };
+    updatePage();
+  }, [page, counter]);
 
-  private renderModsSmall(mods: IWorkshopMod[], gameMode: string) {
-    const { t } = this.props;
+  return (
+    <MainPage>
+      <MainPage.Header>
+        <IconBar
+          group='workshop-icons'
+          staticElements={buttons}
+          className='menubar'
+          t={t}
+        />
+      </MainPage.Header>
+      <MainPage.Body>
+        <FlexLayout type='column' className='mod-page'>
+          <FlexLayout.Fixed>
+            <InputGroup>
+              <FormInput
+                className='mod-filter-input'
+                value={currentFilterValue}
+                placeholder={t('Search for a mod...')}
+                onChange={applyFilter}
+                debounceTimer={1000}
+                clearable
+              />
+            </InputGroup>
+          </FlexLayout.Fixed>
+          <FlexLayout.Flex>
+            <div className='modpicker-body'>
+              <PanelGroup id='mod-panel-group'>
+                  <Panel.Body>
+                    <WorkshopModsMods
+                      t={t}
+                      fallbackImg={fallbackImg}
+                      mods={availableMods}
+                      onModClick={onModClick}
+                    />
+                  </Panel.Body>
+              </PanelGroup>
+            </div>
+          </FlexLayout.Flex>
+        </FlexLayout>
+      </MainPage.Body>
+    </MainPage>
+  );
+}
 
-    return (
-      <div>
-        <div className='mods-group'>
-          {mods.map(mod => (
-            <ModThumbnail
-              t={t}
-              key={mod.publishedfileid}
-              mod={mod}
-              onModClick={this.props.onModClick}
-              fallbackImg={this.props.fallbackImg}
-            />
-          ))
-          }
-        </div>
-      </div>
-    );
-  }
+interface IModsProps {
+  t: TFunction
+  mods: IWorkshopMod[];
+  onModClick: (mod: IWorkshopMod) => void;
+  fallbackImg: string;
+}
+function WorkshopModsMods(props: IModsProps) {
+  const { t, mods, onModClick, fallbackImg } = props;
+  return mods?.length > 0 
+    ? (
+    <div className='mods-group'>
+      {
+        mods.map(mod =>
+          <ModThumbnail
+            t={t}
+            key={mod.publishedfileid}
+            mod={mod}
+            onModClick={onModClick}
+            fallbackImg={fallbackImg}
+          />
+        )
+      }
+    </div>
+  ) : (
+    <RenderWait />
+  );
+}
+
+function RenderWait() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100%',
+      }}
+    >
+      <Spinner
+        style={{
+          width: '64px',
+          height: '64px',
+        }}
+      />
+    </div>
+  );
 }
 
 function mapStateToProps(state: any): IConnectedProps {
   const gameMode = selectors.activeGameId(state);
+  if (!gameMode) {
+    return { gameMode, totalMods: 0, fallbackImg: '' };
+  }
   const game = selectors.gameById(state, gameMode);
   return {
     gameMode,
-    fallbackImg: path.join(game.extensionPath, game.logo),
-    profiles: state.persistent.profiles,
+    fallbackImg: (game?.extensionPath && game?.logo)
+      ? path.join(game.extensionPath, game.logo)
+      : path.join(__dirname, 'steam.jpg'),
     totalMods: util.getSafe(state, ['session', 'steamkit', 'cache', gameMode, 'totalMods'], 0),
   };
 }
 
-function mapDispatchToProps(dispatch): any {
-  return {};
+function mapDispatchToProps(dispatch: any): IActionProps {
+  return {
+    onSetWorkshopModFilter: (filter: string) => dispatch(setWorkshopModFilter(filter)),
+  };
 }
-
-export default
-  connect(mapStateToProps, mapDispatchToProps)(WorkshopPage);

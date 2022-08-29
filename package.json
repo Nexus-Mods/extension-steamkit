@@ -1,10 +1,10 @@
 {
   "name": "steamkit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "This Vortex extension interacts with the Steam Depot Downloader application, allowing game extensions to execute certain SteamAPI functionalities",
   "main": "./dist/index.js",
   "scripts": {
-    "assets_out": "copyfiles -f icons.svg dist && copyfiles -f ./*.scss dist",
+    "assets_out": "copyfiles -f icons.svg dist && copyfiles -f ./*.scss dist && copyfiles -f ./*.jpg dist",
     "webpack": "node ./node_modules/webpack/bin/webpack --config webpack.config.js --display-error-details --progress --profile --color",
     "build": "npm run webpack && extractInfo && yarn assets_out"
   },
@@ -28,6 +28,7 @@
     "webpack-cli": "^3.3.4"
   },
   "dependencies": {
+    "memoize-one": "^6.0.0",
     "node-rest-client": "^3.1.1",
     "turbowalk": "Nexus-Mods/node-turbowalk",
     "winapi-bindings": "Nexus-Mods/node-winapi-bindings"

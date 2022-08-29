@@ -34,6 +34,12 @@ export interface IWorkshopModInfo {
   time_updated: number;
 }
 
+export interface IDependencyModInfo {
+  // This is grim - we don't have a title or anything besides the ugcid...
+  publishedfileid: string;
+  creator_appid: number;
+}
+
 export interface IWorkshopMod {
   app_name: string;
   ban_reason: string;

@@ -1,28 +1,20 @@
 import I18next from 'i18next';
 import * as React from 'react';
-import { withTranslation } from 'react-i18next';
-import { connect } from 'react-redux';
-import { ComponentEx, More, tooltip, util } from 'vortex-api';
+import { useTranslation } from 'react-i18next';
+import { More, tooltip, util } from 'vortex-api';
 
-import { setWebApiKey } from '../actions/settings';
+import { NS } from '../constants';
 
 interface IBaseProps {
   t: typeof I18next.t;
-  onSetSteamWebAPIKey: () => void;
+  onSetSteamWebAPIKey: (reset?: boolean) => void;
+  getSteamWebApiKey: () => string;
 }
 
-interface IConnectedProps {
-  WebAPIKey: string;
-}
-
-interface IActionProps {
-  onResetSteamWebAPIKey: () => void;
-}
-
-type IProps = IBaseProps & IConnectedProps & IActionProps;
+type IProps = IBaseProps;
 
 function renderMore(props: IProps): JSX.Element {
-  const { t } = props;
+  const { t } = useTranslation(NS);
   return (
     <More id='steamkit-reset-api' name={t('Reset Steam Web API Key')}>
       {t('Vortex requires a Steam Web API key In order for Vortex to pull '
@@ -33,7 +25,10 @@ function renderMore(props: IProps): JSX.Element {
 }
 
 function resetButton(props: IProps): JSX.Element {
-  const { t, onResetSteamWebAPIKey } = props;
+  const { t, onSetSteamWebAPIKey } = props;
+  const onResetSteamWebAPIKey = React.useCallback(() => {
+    onSetSteamWebAPIKey(true);
+  }, [onSetSteamWebAPIKey]);
   return (
     <div>
       <tooltip.Button
@@ -49,11 +44,14 @@ function resetButton(props: IProps): JSX.Element {
 
 function setButton(props: IProps): JSX.Element {
   const { t, onSetSteamWebAPIKey } = props;
+  const onSetKey = React.useCallback(() => {
+    onSetSteamWebAPIKey();
+  }, [onSetSteamWebAPIKey])
   return (
     <div>
       <tooltip.Button
         tooltip={t('Sets the Steam Web API Key')}
-        onClick={onSetSteamWebAPIKey}
+        onClick={onSetKey}
       >
         {t('Set Steam Web API Key')}
       </tooltip.Button>
@@ -62,28 +60,23 @@ function setButton(props: IProps): JSX.Element {
   );
 }
 
-function Settings(props: IProps) {
-  const { t, WebAPIKey } = props;
+export default function Settings(props: IProps) {
+  const { getSteamWebApiKey } = props;
+  const [webAPIKey, setWebApiKey] = React.useState('');
+  React.useEffect(() => {
+    const fetch = async () => {
+      const key = await getSteamWebApiKey();
+      setWebApiKey(key);
+    };
+    // One time deal.
+    fetch();
+    return () => {
+      setWebApiKey('');
+    }
+  }, []);
   return (
     <div>
-      {WebAPIKey !== undefined ? resetButton(props) : setButton(props)};
+      {webAPIKey !== undefined ? resetButton(props) : setButton(props)};
     </div>
   );
 }
-
-function mapStateToProps(state: any): IConnectedProps {
-  return {
-    WebAPIKey: util.getSafe(state, ['settings', 'steamkit', 'WebAPIKey'], undefined),
-  };
-}
-
-function mapDispatchToProps(dispatch: any): IActionProps {
-  return {
-    onResetSteamWebAPIKey: () => dispatch(setWebApiKey(undefined)),
-  };
-}
-
-export default
-  withTranslation(['common', 'steamkit-settings'])(
-    connect(mapStateToProps, mapDispatchToProps)(
-      Settings) as any) as React.ComponentClass<IBaseProps>;

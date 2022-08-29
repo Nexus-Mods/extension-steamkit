@@ -8,3 +8,6 @@ export const endMismatchDialog = createAction('END_MISMATCH_DIALOG');
 
 export const setMismatchState = createAction('SET_MISMATCH_DIALOG_STATE',
   (state: IMismatchState): any => state);
+
+export const setWorkshopModFilter = createAction('SET_WORKSHOP_MOD_FILTER',
+  (filter: string) => filter);
