@@ -49,6 +49,9 @@ export default function WorkshopPage(props: IBaseProps) {
   const context = React.useContext(MainContext);
   const { onSetWorkshopModFilter } = mapDispatchToProps(context.api.store.dispatch);
   const onSetPage = React.useCallback((newPage: number) => {
+    if (!modScrubber) {
+      return;
+    }
     if (newPage !== page && newPage > 0 && newPage <= Math.ceil(modScrubber.availableTotal() / MODS_PER_PAGE)) {
       setAvailableMods([]);
       setPage(newPage);
@@ -72,7 +75,9 @@ export default function WorkshopPage(props: IBaseProps) {
   const applyFilter = React.useCallback((value) => {
     setCurrentFilterValue(value);
     onSetWorkshopModFilter(value);
-    modScrubber.resetDataArray();
+    if (modScrubber) {
+      modScrubber.resetDataArray();
+    }
     onSetCounter(counter + 1);
     onSetPage(1);
   }, [
@@ -83,9 +88,11 @@ export default function WorkshopPage(props: IBaseProps) {
   React.useEffect(() => {
     const fetchModScrubber = async () => {
       if (gameMode) {
-        let scrubber: React.SetStateAction<ModScrubber>;
         try {
-          scrubber = await onGameModeActivated(gameMode);
+          const scrubber = await onGameModeActivated(gameMode);
+          if (!scrubber) {
+            throw new Error('Steam Mod Scrubber could not be initialized');
+          }
           setModScrubber(scrubber);
           onSetCounter(counter + 1);
         } catch (err) {

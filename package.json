@@ -1,6 +1,6 @@
 {
   "name": "steamkit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "This Vortex extension interacts with the Steam Depot Downloader application, allowing game extensions to execute certain SteamAPI functionalities",
   "main": "./dist/index.js",
   "scripts": {
