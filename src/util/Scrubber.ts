@@ -6,16 +6,23 @@ import { IModsCache, IWorkshopMod } from '../types/interface';
 
 import { MODS_PER_PAGE } from '../constants';
 
+export enum QueryType {
+  ByVote = 0,
+  ByDate = 1,
+  ByTrend = 3,
+}
+
 export interface IQueryFilesParameters {
   appid?: string;
   key?: string;
   page?: number;
   publishedfileid?: string;
   filter?: string;
+  sorting?: QueryType;
 }
 
 const MODS_PER_PAGE_PARAM = `&numperpage=${MODS_PER_PAGE}`;
-const QUERY_LINK_TEMPLATE = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/?key={{key}}&appid={{appId}}&query_type=1&page={{page}}&creator_appid={{appId}}&return_children=true&return_short_description=true${MODS_PER_PAGE_PARAM}{{fileid}}{{title}}`;
+const QUERY_LINK_TEMPLATE = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/?key={{key}}&appid={{appId}}&query_type={{type}}&page={{page}}&creator_appid={{appId}}&return_children=true&return_vote_data=true&return_short_description=true${MODS_PER_PAGE_PARAM}{{fileid}}{{title}}`;
 
 export class ModScrubber {
   // Steam api key.
@@ -126,6 +133,7 @@ export class ModScrubber {
       return null;
     }
     const link: string = QUERY_LINK_TEMPLATE.replace(/{{appId}}/g, appId)
+                                            .replace(/{{type}}/, parameters.sorting.toFixed())
                                             .replace('{{key}}', apiKey)
                                             .replace('{{page}}', currPage)
                                             .replace('{{fileid}}', fileId)
@@ -170,8 +178,9 @@ export class ModScrubber {
       this.mDataArray[query.page] = res;
       return res;
     } catch (err) {
-      const allowReport = !(err instanceof NoSteamDataException);
-      this.mApi.showErrorNotification('Failed to query Steam Workshop', err, { allowReport });
+      if (!(err instanceof NoSteamDataException)) {
+        this.mApi.showErrorNotification('Failed to query Steam Workshop', err);
+      }
       return Promise.resolve([]);
     }
   }

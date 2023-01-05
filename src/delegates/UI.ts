@@ -95,8 +95,6 @@ class UI extends DelegateBase {
       { label: 'Continue', default: true },
     ], 'steamkit-login-screen').then(res => {
       if (res.action === 'Cancel') {
-        util.showError(this.api.store.dispatch,
-          'Unable to complete Steam operation', 'User Canceled Login', { allowReport: false });
         callback(new util.UserCanceled(), null);
       } else {
         if (!!res.input['Username'] && !!res.input['Password']) {

@@ -76,7 +76,7 @@ export default function Settings(props: IProps) {
   }, []);
   return (
     <div>
-      {webAPIKey !== undefined ? resetButton(props) : setButton(props)};
+      {webAPIKey !== undefined ? resetButton(props) : setButton(props)}
     </div>
   );
 }

@@ -83,6 +83,12 @@ export interface IWorkshopMod {
   visibility: number;
   workshop_file: boolean;
   workshop_accepted: boolean;
+
+  vote_data: {
+    score: number;
+    votes_up: number;
+    votes_down: number;
+  }
 }
 
 export interface IReportError {

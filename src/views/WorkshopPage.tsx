@@ -2,19 +2,20 @@
 import path from 'path';
 
 import { EmptyPlaceholder, FlexLayout, FormInput, MainContext,
-  IconBar, MainPage, selectors, Spinner, types, util } from 'vortex-api';
+  IconBar, MainPage, selectors, Spinner, types, util, Dropdown, DropdownButton } from 'vortex-api';
 
 import { useSelector } from 'react-redux';
+import Select from 'react-select';
 
 import * as React from 'react';
-import { InputGroup, Panel, PanelGroup } from 'react-bootstrap';
+import { InputGroup, Panel } from 'react-bootstrap';
 import { IWorkshopMod } from '../types/interface';
 import ModThumbnail from './ModThumbnail';
 import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
 
 import { setWorkshopModFilter } from '../actions/session';
-import { ModScrubber } from '../util/Scrubber';
+import { ModScrubber, QueryType } from '../util/Scrubber';
 import { MODS_PER_PAGE } from '../constants';
 
 interface IBaseProps {
@@ -33,10 +34,6 @@ interface IActionProps {
   onSetWorkshopModFilter: (filter: string) => void;
 }
 
-const initialState = {
-
-};
-
 export default function WorkshopPage(props: IBaseProps) {
   const { onGameModeActivated, onModClick } = props;
   const [ t ] = useTranslation();
@@ -44,57 +41,61 @@ export default function WorkshopPage(props: IBaseProps) {
   const [ page, setPage ] = React.useState(1);
   const [ modScrubber, setModScrubber ] = React.useState<ModScrubber | undefined>(undefined);
   const [ counter, setCounter ] = React.useState(0);
+  const [ loading, setLoading ] = React.useState<boolean>(false);
+  const [ sorting, setSorting ] = React.useState(QueryType.ByDate);
   const [ currentFilterValue, setCurrentFilterValue ] = React.useState('');
-  const { gameMode, fallbackImg } = useSelector(mapStateToProps);
+  const { gameMode, fallbackImg } = useSelector<any, IConnectedProps>(mapStateToProps);
   const context = React.useContext(MainContext);
   const { onSetWorkshopModFilter } = mapDispatchToProps(context.api.store.dispatch);
-  const onSetPage = React.useCallback((newPage: number) => {
+  const onSetPage = React.useCallback((updatePage: (oldPage: number) => number) => {
     if (!modScrubber) {
       return;
     }
-    if (newPage !== page && newPage > 0 && newPage <= Math.ceil(modScrubber.availableTotal() / MODS_PER_PAGE)) {
+    const newPage = updatePage(page);
+    if ((newPage !== page) && (newPage > 0) && (newPage <= Math.ceil(modScrubber.availableTotal() / MODS_PER_PAGE))) {
       setAvailableMods([]);
       setPage(newPage);
     }
   }, [page, setPage, setAvailableMods, modScrubber]);
 
-  const onSetCounter = React.useCallback((newCounter: number) => {
-    if (newCounter !== counter) {
-      setAvailableMods([]);
-      setCounter(newCounter);
-    }
-  }, [counter, setCounter, setAvailableMods]);
+  const incrementCounter = React.useCallback(() => {
+    setAvailableMods([]);
+    setCounter(oldValue => oldValue + 1);
+  }, [setCounter, setAvailableMods]);
 
-  const buttons = React.useMemo(() => {
+  const buttons = React.useMemo<Array<types.IActionDefinition>>(() => {
     return [
-      { action: () => onSetPage(page - 1), title: 'Previous Page' },
-      { action: () => onSetPage(page + 1), title: 'Next Page' },
+      { action: () => onSetPage(old => old - 1), title: 'Previous Page', icon: 'nav-back' },
+      { action: () => onSetPage(old => old + 1), title: 'Next Page', icon: 'nav-forward' },
     ];
-  }, [page, onSetPage]);
+  }, [onSetPage]);
 
   const applyFilter = React.useCallback((value) => {
     setCurrentFilterValue(value);
     onSetWorkshopModFilter(value);
-    if (modScrubber) {
-      modScrubber.resetDataArray();
-    }
-    onSetCounter(counter + 1);
-    onSetPage(1);
+    modScrubber?.resetDataArray?.();
+    incrementCounter();
+    onSetPage(() => 1);
   }, [
-    onSetPage, onSetCounter, setCurrentFilterValue,
-    onSetWorkshopModFilter, modScrubber, counter,
+    onSetPage, setCurrentFilterValue,
+    onSetWorkshopModFilter, modScrubber,
   ]);
+
+  const onSetSorting = React.useCallback((selection: { value: any, label: string }) => {
+    setSorting(selection.value);
+    modScrubber?.resetDataArray?.();
+    incrementCounter();
+    onSetPage(() => 1);
+  }, [setSorting, incrementCounter, onSetPage]);
 
   React.useEffect(() => {
     const fetchModScrubber = async () => {
       if (gameMode) {
         try {
           const scrubber = await onGameModeActivated(gameMode);
-          if (!scrubber) {
-            throw new Error('Steam Mod Scrubber could not be initialized');
-          }
+          // scrubber may be undefined if the game is not a steam game
           setModScrubber(scrubber);
-          onSetCounter(counter + 1);
+          incrementCounter();
         } catch (err) {
           context.api.showErrorNotification('Failed to load mod scrubber', err);
         }
@@ -107,17 +108,20 @@ export default function WorkshopPage(props: IBaseProps) {
       return;
     }
     const updatePage = async () => {
+      setLoading(true);
       const mods = await modScrubber.scrubPage({
         page,
-        filter: currentFilterValue
+        filter: currentFilterValue,
+        sorting,
       });
+      setLoading(false);
       if (mods?.length > 0) {
         setAvailableMods(mods);
         setPage(page);
       }
     };
     updatePage();
-  }, [page, counter]);
+  }, [page, counter, sorting]);
 
   return (
     <MainPage>
@@ -128,34 +132,49 @@ export default function WorkshopPage(props: IBaseProps) {
           className='menubar'
           t={t}
         />
+        <InputGroup>
+          <FormInput
+            className='mod-filter-input'
+            value={currentFilterValue}
+            placeholder={t('Search for a mod (title or description)...')}
+            onChange={applyFilter}
+            debounceTimer={1000}
+            clearable
+          />
+        </InputGroup>
+        <Select
+          options={[
+            { value: QueryType.ByDate, label: t('Newest') },
+            { value: QueryType.ByVote, label: t('Highest Rated') },
+            { value: QueryType.ByTrend, label: t('Trending') },
+          ]}
+          value={sorting}
+          onChange={onSetSorting}
+          clearable={false}
+          // autosize={false}
+          searchable={false}
+        />
       </MainPage.Header>
       <MainPage.Body>
         <FlexLayout type='column' className='mod-page'>
           <FlexLayout.Fixed>
-            <InputGroup>
-              <FormInput
-                className='mod-filter-input'
-                value={currentFilterValue}
-                placeholder={t('Search for a mod...')}
-                onChange={applyFilter}
-                debounceTimer={1000}
-                clearable
-              />
-            </InputGroup>
+            <Panel className='mod-filter-container'>
+              <Panel.Body>
+              </Panel.Body>
+            </Panel>
           </FlexLayout.Fixed>
           <FlexLayout.Flex>
-            <div className='modpicker-body'>
-              <PanelGroup id='mod-panel-group'>
-                  <Panel.Body>
-                    <WorkshopModsMods
-                      t={t}
-                      fallbackImg={fallbackImg}
-                      mods={availableMods}
-                      onModClick={onModClick}
-                    />
-                  </Panel.Body>
-              </PanelGroup>
-            </div>
+            <Panel className='modpicker-body'>
+              <Panel.Body>
+                <WorkshopModsMods
+                  t={t}
+                  loading={loading}
+                  fallbackImg={fallbackImg}
+                  mods={availableMods}
+                  onModClick={onModClick}
+                />
+              </Panel.Body>
+            </Panel>
           </FlexLayout.Flex>
         </FlexLayout>
       </MainPage.Body>
@@ -164,14 +183,20 @@ export default function WorkshopPage(props: IBaseProps) {
 }
 
 interface IModsProps {
-  t: TFunction
+  t: TFunction;
+  loading: boolean;
   mods: IWorkshopMod[];
   onModClick: (mod: IWorkshopMod) => void;
   fallbackImg: string;
 }
 function WorkshopModsMods(props: IModsProps) {
-  const { t, mods, onModClick, fallbackImg } = props;
-  return mods?.length > 0 
+  const { t, loading, mods, onModClick, fallbackImg } = props;
+  
+  if (loading) {
+    return (<RenderWait/>);
+  }
+
+  return mods.length > 0
     ? (
     <div className='mods-group'>
       {
@@ -187,7 +212,11 @@ function WorkshopModsMods(props: IModsProps) {
       }
     </div>
   ) : (
-    <RenderWait />
+    <EmptyPlaceholder
+      icon='steam'
+      text={t('No more mods')}
+      fill={true}
+    />
   );
 }
 

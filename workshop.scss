@@ -11,14 +11,14 @@ $thumbnail-width: 256px;
 }
 
 .modpicker-body {
-  height: 100%;
   // has to be relative for popovers to scroll along
   position: relative;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding: 0 10px;
   .popover {
     max-width: 600px;
+  }
+  > .panel-body {
+    overflow: auto;
   }
 }
 
@@ -26,6 +26,9 @@ $thumbnail-width: 256px;
   position: relative;
   height: auto;
   border: 0;
+  width: 256px;
+  height: 144px !important;
+  padding: 0;
 
   &panel-primary {
     border-color: $border-color;
@@ -40,9 +43,7 @@ $thumbnail-width: 256px;
 .mod-thumbnail-body {
   @extend .panel-body;
   padding: 0;
-  background-color: $gray-lighter;
-  max-width: 256px;
-  max-height: 144px;
+  // background-color: $gray-lighter;
   display: flex;
   flex-direction: column;
 
@@ -100,16 +101,22 @@ $thumbnail-width: 256px;
     }
   }
 
-  .thumbnail-img {
-    max-width: 80%;
-    max-height: 80%;
+  .panel-body {
+    width: 100%;
   }
-}
 
-@media (max-width: 1280px) {
-  // .game-thumbnail-body .thumbnail-img {
-  //   max-width: 128px;
-  // }
+  .thumbnail-img {
+    width: 100%;
+    height: 100%;
+    background-position: center;
+    background-size: cover;
+  }
+
+  .flex-center-both {
+    flex-direction: column;
+    gap: $gutter-width;
+    height: 100%;
+  }
 }
 
 .mod-thumbnail-img-list {
@@ -166,43 +173,10 @@ $thumbnail-width: 256px;
   margin: 6px;
 }
 
-#mod-panel-group {
-  .panel-heading {
-    background-color: darken($table-bg, 5%);
-    border-bottom: 1px solid $gray-dark !important;
-    display: flex;
-    align-items: center;
-
-    > .icon {
-      margin-right: 1em;
-    }
-  }
-
-  .panel, .panel-body {
-    border: 0;
-    margin-bottom: 10px;
-    :hover {
-      background-color: darken($gray-lighter, 5%);
-    }
-  }
-}
-
 .mod-page {
   padding-right: $half-gutter;
-}
-
-.mod-filter-input {
-  padding: 10px 0;
-  margin-bottom: 5px !important;
-  position: relative;
-  border-color: $border-color;
-  width: 20em;
-  // prevent this from overlaying popovers from the iconbar above
-  z-index: 0;
-  .form-control {
-    position: initial;
-    float: unset;
-    z-index: unset;
+  .panel, .panel-body {
+    border: 0;
   }
 }
 
@@ -250,4 +224,34 @@ $thumbnail-width: 256px;
   margin-left: 8px;
   margin-top: 4px !important;
   margin-bottom: 4px !important;
+}
+
+.mod-filter-input .form-control {
+  z-index: unset;
+}
+
+[id='page-Steam Workshop'] {
+  .mainpage-header {
+    align-items: center;
+    gap: $gutter-width;
+    .mod-filter-input {
+      min-width: 40em;
+    }
+    .Select {
+      min-width: 20em;
+    }
+  }
+}
+
+.workshop-rating {
+  position: absolute;
+  top: 0;
+  right: 0;
+  text-shadow: 0 0 2px $black;
+  background-color: rgba($black, 50%);
+  padding: 0.3em;
+  display: flex;
+  .icon {
+    margin-right: 0.3em;
+  }
 }

@@ -563,7 +563,7 @@ function showSteamWebApiDialog(api: types.IExtensionApi) {
 
 function raiseNotASteamGameNotif(api: types.IExtensionApi) {
   api.sendNotification({
-    type: 'error',
+    type: 'warning',
     message: 'Must be a Steam game to verify file integrity',
     actions: [
       {
@@ -581,23 +581,29 @@ function raiseNotASteamGameNotif(api: types.IExtensionApi) {
   });
 }
 
+export class NonSteamGame extends Error {
+  constructor() {
+    super('Not a steam game');
+    this.name = this.constructor.name;
+  }
+}
+
 function init(context: types.IExtensionContext): boolean {
   context.registerReducer(['session', 'steamkit'], sessionReducer);
   let downloadQueue;
   let modScrubber: ModScrubber;
   let _mismatches: IMismatch[] = [];
-  util.installIconSet('steam', path.join(__dirname, 'icons.svg'));
   const verifyIsSteamGame = async (parameters: ISteamKitParameters,
                                    discovery: types.IDiscoveryResult) => {
     let gameEntry;
     try {
       gameEntry = await util.GameStoreHelper.findByAppId([parameters.AppId.toString()], 'steam');
     } catch (err) {
-      return Promise.reject(new Error('Not a Steam game'));
+      return Promise.reject(new NonSteamGame());
     }
     return (normalizePath(gameEntry.gamePath) === normalizePath(discovery.path))
       ? Promise.resolve()
-      : Promise.reject(new Error('Not a Steam game'));
+      : Promise.reject(new NonSteamGame());
   };
 
   const verifyFilesWrap = async (parameters: ISteamKitParameters, gameId: string, cb?: (err: Error, res?: any) => void) => {
@@ -749,12 +755,12 @@ function init(context: types.IExtensionContext): boolean {
           modScrubber.init(game.details.steamAppId, gameId, webApiKey);
           return modScrubber;
         } catch (err) {
-          if (err.message === 'Not a Steam game') {
-            raiseNotASteamGameNotif(context.api);
+          if (err instanceof NonSteamGame) {
+            // that's fine, can't all games be on steam...
+            return undefined;
           } else {
-            context.api.showErrorNotification('Unable to refresh workshop list', err);
+            throw err;
           }
-          return Promise.resolve(undefined);
         }
       },
       onModClick: async (mod: IWorkshopMod) => {
@@ -942,6 +948,7 @@ function init(context: types.IExtensionContext): boolean {
       }
     });
     context.api.setStylesheet('workshoppagestyle', path.join(__dirname, 'workshop.scss'));
+    return util.installIconSet('steam', path.join(__dirname, 'icons.svg'));
   });
 
   return true;

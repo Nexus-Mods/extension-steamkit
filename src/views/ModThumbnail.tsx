@@ -3,7 +3,10 @@ import { IWorkshopMod } from '../types/interface';
 import { TFunction } from 'i18next';
 import * as React from 'react';
 
-import { log } from 'vortex-api';
+import { Icon, OverlayTrigger, tooltip, util } from 'vortex-api';
+import { Button, Panel, Popover } from 'react-bootstrap';
+
+const FILE_DETAILS_URL = 'https://steamcommunity.com/sharedfiles/filedetails/?id=';
 
 export interface IBaseProps {
   mod: IWorkshopMod;
@@ -13,47 +16,96 @@ export interface IBaseProps {
   onModClick: (mod: IWorkshopMod) => void;
 }
 
+interface IMenuIcon {
+  t: TFunction;
+  mod: IWorkshopMod;
+}
+
+function getWindowBounds(): DOMRect {
+  const res = {
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    height: window.innerHeight,
+    width: window.innerWidth,
+    bottom: window.innerHeight,
+    right: window.innerWidth,
+  };
+
+  return {
+    ...res,
+    toJSON: () => JSON.stringify(res),
+  };
+}
+
+function MenuIcon(props: IMenuIcon) {
+  const { t, mod } = props;
+  const gameInfoPopover = (
+    <Popover className='popover-workshop-info'>
+      {util.bbcodeToReact(mod.short_description)}
+    </Popover>
+  );
+
+  return (
+    <OverlayTrigger
+      key='info-overlay'
+      overlay={gameInfoPopover}
+      getBounds={getWindowBounds}
+      orientation='horizontal'
+      shouldUpdatePosition={true}
+      trigger='click'
+      rootClose={true}
+    >
+      <tooltip.IconButton
+        icon='game-menu'
+        className='game-thumbnail-info btn-embed'
+        tooltip={t('Show Details')}
+      />
+    </OverlayTrigger>
+  );
+}
+
 export default function ModThumbnail(props: IBaseProps) {
-  const { mod, fallbackImg, onModClick } = props;
+  const { t, mod, fallbackImg, onModClick } = props;
   const imgUrl = !!mod.preview_url ? mod.preview_url : fallbackImg;
-  const [img, setImg] = React.useState(fallbackImg);
   const onClick = React.useCallback(() => {
     onModClick(mod);
   }, [onModClick, mod]);
 
-  React.useEffect(() => {
-    // One time deal
-    const fetchImage = async () => {
-      if (imgUrl !== fallbackImg) {
-        const options = {
-          method: 'GET',
-        }
-        try {
-          const res = await fetch(imgUrl, options).catch(err => Promise.reject(err));
-          if (res.status === 200) {
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            setImg(url);
-          }
-        } catch (err) {
-          // nop
-          log('debug', 'Failed to fetch image', err);
-        }
-      }
-    };
-    fetchImage();
-  }, []);
+  const openDetails = React.useCallback(() => {
+    util.opn(FILE_DETAILS_URL + mod.publishedfileid).catch(() => null);
+  }, [mod]);
+
+  const totalVotes = mod.vote_data.votes_up + mod.vote_data.votes_down;
 
   return (
-    <div className='mod-thumbnail-body'>
-      <img
-        onClick={onClick}
-        className={'thumbnail-img'}
-        src={img}
-      />
-      <div className='name'>
-        {mod.title}
-      </div>
-    </div>
+    <Panel className='mod-thumbnail'>
+      <Panel.Body className='mod-thumbnail-body'>
+        <img
+          onClick={onClick}
+          className='thumbnail-img'
+          style={{ backgroundImage: `url(${imgUrl})` }}
+        />
+        <div className='bottom'>
+          <div className='name'>{mod.title}</div>
+        </div>
+        {totalVotes > 10 ? (
+          <div className='workshop-rating'>
+            <Icon name='endorse-yes'/>
+            {Math.round(mod.vote_data.score * 100)}%
+          </div>
+         ) : null}
+        <div className='hover-menu'>
+          <div className='hover-content'>
+            <MenuIcon t={t} mod={mod} />
+            <div className='flex-center-both'>
+              <Button onClick={onClick}>{t('Install')}</Button>
+              <Button onClick={openDetails}>{t('Open Page')}</Button>
+            </div>
+          </div>
+        </div>
+      </Panel.Body>
+    </Panel>
   );
 }
