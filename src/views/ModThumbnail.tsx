@@ -77,7 +77,7 @@ export default function ModThumbnail(props: IBaseProps) {
     util.opn(FILE_DETAILS_URL + mod.publishedfileid).catch(() => null);
   }, [mod]);
 
-  const totalVotes = mod.vote_data.votes_up + mod.vote_data.votes_down;
+  const totalVotes = mod.vote_data?.votes_up ?? 0 + mod.vote_data?.votes_down ?? 0;
 
   return (
     <Panel className='mod-thumbnail'>
